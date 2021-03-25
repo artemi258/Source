@@ -1,12 +1,14 @@
 import "./slider";
 import modals from "./modules/modals";
 import tabs from "./modules/tabs";
+import WOW from 'wow.js';
 
+new WOW().init();
 
 
 window.addEventListener('DOMContentLoaded', () => {
     modals('.popup_engineer_btn', '.popup_engineer', '.popup_engineer .popup_close');
     modals('.phone_link', '.popup', '.popup .popup_close');
-    tabs('.glazing_slider', '.slick-slide', '.glazing_content', '.after_click');
-    tabs('.decoration_slider', '.decoration_item', '.decoration_content', '.after_click');
+    tabs('.glazing_slider', '.glazing_block', '.glazing_content', 'active');
+    tabs('.decoration_slider', '.no_click', '.decoration_content > div > div', 'after_click');
 });

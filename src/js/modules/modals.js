@@ -14,20 +14,32 @@ function modals(triggerSelector, modalSelector, closeSelector) {
                     }
         
                     modalEngineer.style.display = 'block';
+                    modalEngineer.classList.add('animate__fadeIn', 'wow', 'animate__animated');
                     document.body.style.overflow = 'hidden';
         
                     });
             });
 
             modalEngineerClose.addEventListener('click', () => {
-                modalEngineer.style.display = 'none';
-                    document.body.style.overflow = '';
+                    modalEngineer.classList.remove('animate__fadeIn', 'wow', 'animate__animated');
+                    modalEngineer.classList.add('animate__fadeOut', 'wow', 'animate__animated');
+                    setTimeout(() => {
+                        modalEngineer.style.display = 'none';
+                        document.body.style.overflow = '';
+                        modalEngineer.classList.remove('animate__fadeOut', 'wow', 'animate__animated');
+                     }, 500); 
             });
 
             modalEngineer.addEventListener('click', (e) => {
-                        if (e.target === modalEngineer) {
+                      if (e.target === modalEngineer) {
+                            modalEngineer.classList.remove('animate__fadeIn', 'wow', 'animate__animated');
+                            modalEngineer.classList.add('animate__fadeOut', 'wow', 'animate__animated');
+                         setTimeout(() => {
                             modalEngineer.style.display = 'none';
                             document.body.style.overflow = '';
+                            modalEngineer.classList.remove('animate__fadeOut', 'wow', 'animate__animated');
+                         }, 500);   
+                            
                         }
                     });
     }

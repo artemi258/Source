@@ -486,7 +486,7 @@ textarea:focus {
   display: none;
 }
 
-.glazing a.active {
+.glazing .active a {
   text-decoration: none;
   color: #454545;
 }
@@ -513,7 +513,7 @@ textarea:focus {
   cursor: pointer;
 }
 
-.decoration_item a:focus {
+.decoration_item .after_click a {
   border: none;
   text-decoration: none;
   color: #0089cd;

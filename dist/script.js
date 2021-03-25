@@ -102,6 +102,26 @@ module.exports = function (it) {
 
 /***/ }),
 
+/***/ "./node_modules/core-js/internals/advance-string-index.js":
+/*!****************************************************************!*\
+  !*** ./node_modules/core-js/internals/advance-string-index.js ***!
+  \****************************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+var charAt = __webpack_require__(/*! ../internals/string-multibyte */ "./node_modules/core-js/internals/string-multibyte.js").charAt;
+
+// `AdvanceStringIndex` abstract operation
+// https://tc39.github.io/ecma262/#sec-advancestringindex
+module.exports = function (S, index, unicode) {
+  return index + (unicode ? charAt(S, index).length : 1);
+};
+
+
+/***/ }),
+
 /***/ "./node_modules/core-js/internals/an-object.js":
 /*!*****************************************************!*\
   !*** ./node_modules/core-js/internals/an-object.js ***!
@@ -441,6 +461,132 @@ module.exports = function (exec) {
 
 /***/ }),
 
+/***/ "./node_modules/core-js/internals/fix-regexp-well-known-symbol-logic.js":
+/*!******************************************************************************!*\
+  !*** ./node_modules/core-js/internals/fix-regexp-well-known-symbol-logic.js ***!
+  \******************************************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+var createNonEnumerableProperty = __webpack_require__(/*! ../internals/create-non-enumerable-property */ "./node_modules/core-js/internals/create-non-enumerable-property.js");
+var redefine = __webpack_require__(/*! ../internals/redefine */ "./node_modules/core-js/internals/redefine.js");
+var fails = __webpack_require__(/*! ../internals/fails */ "./node_modules/core-js/internals/fails.js");
+var wellKnownSymbol = __webpack_require__(/*! ../internals/well-known-symbol */ "./node_modules/core-js/internals/well-known-symbol.js");
+var regexpExec = __webpack_require__(/*! ../internals/regexp-exec */ "./node_modules/core-js/internals/regexp-exec.js");
+
+var SPECIES = wellKnownSymbol('species');
+
+var REPLACE_SUPPORTS_NAMED_GROUPS = !fails(function () {
+  // #replace needs built-in support for named groups.
+  // #match works fine because it just return the exec results, even if it has
+  // a "grops" property.
+  var re = /./;
+  re.exec = function () {
+    var result = [];
+    result.groups = { a: '7' };
+    return result;
+  };
+  return ''.replace(re, '$<a>') !== '7';
+});
+
+// Chrome 51 has a buggy "split" implementation when RegExp#exec !== nativeExec
+// Weex JS has frozen built-in prototypes, so use try / catch wrapper
+var SPLIT_WORKS_WITH_OVERWRITTEN_EXEC = !fails(function () {
+  var re = /(?:)/;
+  var originalExec = re.exec;
+  re.exec = function () { return originalExec.apply(this, arguments); };
+  var result = 'ab'.split(re);
+  return result.length !== 2 || result[0] !== 'a' || result[1] !== 'b';
+});
+
+module.exports = function (KEY, length, exec, sham) {
+  var SYMBOL = wellKnownSymbol(KEY);
+
+  var DELEGATES_TO_SYMBOL = !fails(function () {
+    // String methods call symbol-named RegEp methods
+    var O = {};
+    O[SYMBOL] = function () { return 7; };
+    return ''[KEY](O) != 7;
+  });
+
+  var DELEGATES_TO_EXEC = DELEGATES_TO_SYMBOL && !fails(function () {
+    // Symbol-named RegExp methods call .exec
+    var execCalled = false;
+    var re = /a/;
+
+    if (KEY === 'split') {
+      // We can't use real regex here since it causes deoptimization
+      // and serious performance degradation in V8
+      // https://github.com/zloirock/core-js/issues/306
+      re = {};
+      // RegExp[@@split] doesn't call the regex's exec method, but first creates
+      // a new one. We need to return the patched regex when creating the new one.
+      re.constructor = {};
+      re.constructor[SPECIES] = function () { return re; };
+      re.flags = '';
+      re[SYMBOL] = /./[SYMBOL];
+    }
+
+    re.exec = function () { execCalled = true; return null; };
+
+    re[SYMBOL]('');
+    return !execCalled;
+  });
+
+  if (
+    !DELEGATES_TO_SYMBOL ||
+    !DELEGATES_TO_EXEC ||
+    (KEY === 'replace' && !REPLACE_SUPPORTS_NAMED_GROUPS) ||
+    (KEY === 'split' && !SPLIT_WORKS_WITH_OVERWRITTEN_EXEC)
+  ) {
+    var nativeRegExpMethod = /./[SYMBOL];
+    var methods = exec(SYMBOL, ''[KEY], function (nativeMethod, regexp, str, arg2, forceStringMethod) {
+      if (regexp.exec === regexpExec) {
+        if (DELEGATES_TO_SYMBOL && !forceStringMethod) {
+          // The native String method already delegates to @@method (this
+          // polyfilled function), leasing to infinite recursion.
+          // We avoid it by directly calling the native @@method method.
+          return { done: true, value: nativeRegExpMethod.call(regexp, str, arg2) };
+        }
+        return { done: true, value: nativeMethod.call(str, regexp, arg2) };
+      }
+      return { done: false };
+    });
+    var stringMethod = methods[0];
+    var regexMethod = methods[1];
+
+    redefine(String.prototype, KEY, stringMethod);
+    redefine(RegExp.prototype, SYMBOL, length == 2
+      // 21.2.5.8 RegExp.prototype[@@replace](string, replaceValue)
+      // 21.2.5.11 RegExp.prototype[@@split](string, limit)
+      ? function (string, arg) { return regexMethod.call(string, this, arg); }
+      // 21.2.5.6 RegExp.prototype[@@match](string)
+      // 21.2.5.9 RegExp.prototype[@@search](string)
+      : function (string) { return regexMethod.call(string, this); }
+    );
+    if (sham) createNonEnumerableProperty(RegExp.prototype[SYMBOL], 'sham', true);
+  }
+};
+
+
+/***/ }),
+
+/***/ "./node_modules/core-js/internals/function-to-string.js":
+/*!**************************************************************!*\
+  !*** ./node_modules/core-js/internals/function-to-string.js ***!
+  \**************************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+var shared = __webpack_require__(/*! ../internals/shared */ "./node_modules/core-js/internals/shared.js");
+
+module.exports = shared('native-function-to-string', Function.toString);
+
+
+/***/ }),
+
 /***/ "./node_modules/core-js/internals/global.js":
 /*!**************************************************!*\
   !*** ./node_modules/core-js/internals/global.js ***!
@@ -478,6 +624,18 @@ var hasOwnProperty = {}.hasOwnProperty;
 module.exports = function (it, key) {
   return hasOwnProperty.call(it, key);
 };
+
+
+/***/ }),
+
+/***/ "./node_modules/core-js/internals/hidden-keys.js":
+/*!*******************************************************!*\
+  !*** ./node_modules/core-js/internals/hidden-keys.js ***!
+  \*******************************************************/
+/*! no static exports found */
+/***/ (function(module, exports) {
+
+module.exports = {};
 
 
 /***/ }),
@@ -523,6 +681,78 @@ module.exports = fails(function () {
 }) ? function (it) {
   return classof(it) == 'String' ? split.call(it, '') : Object(it);
 } : Object;
+
+
+/***/ }),
+
+/***/ "./node_modules/core-js/internals/internal-state.js":
+/*!**********************************************************!*\
+  !*** ./node_modules/core-js/internals/internal-state.js ***!
+  \**********************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+var NATIVE_WEAK_MAP = __webpack_require__(/*! ../internals/native-weak-map */ "./node_modules/core-js/internals/native-weak-map.js");
+var global = __webpack_require__(/*! ../internals/global */ "./node_modules/core-js/internals/global.js");
+var isObject = __webpack_require__(/*! ../internals/is-object */ "./node_modules/core-js/internals/is-object.js");
+var createNonEnumerableProperty = __webpack_require__(/*! ../internals/create-non-enumerable-property */ "./node_modules/core-js/internals/create-non-enumerable-property.js");
+var objectHas = __webpack_require__(/*! ../internals/has */ "./node_modules/core-js/internals/has.js");
+var sharedKey = __webpack_require__(/*! ../internals/shared-key */ "./node_modules/core-js/internals/shared-key.js");
+var hiddenKeys = __webpack_require__(/*! ../internals/hidden-keys */ "./node_modules/core-js/internals/hidden-keys.js");
+
+var WeakMap = global.WeakMap;
+var set, get, has;
+
+var enforce = function (it) {
+  return has(it) ? get(it) : set(it, {});
+};
+
+var getterFor = function (TYPE) {
+  return function (it) {
+    var state;
+    if (!isObject(it) || (state = get(it)).type !== TYPE) {
+      throw TypeError('Incompatible receiver, ' + TYPE + ' required');
+    } return state;
+  };
+};
+
+if (NATIVE_WEAK_MAP) {
+  var store = new WeakMap();
+  var wmget = store.get;
+  var wmhas = store.has;
+  var wmset = store.set;
+  set = function (it, metadata) {
+    wmset.call(store, it, metadata);
+    return metadata;
+  };
+  get = function (it) {
+    return wmget.call(store, it) || {};
+  };
+  has = function (it) {
+    return wmhas.call(store, it);
+  };
+} else {
+  var STATE = sharedKey('state');
+  hiddenKeys[STATE] = true;
+  set = function (it, metadata) {
+    createNonEnumerableProperty(it, STATE, metadata);
+    return metadata;
+  };
+  get = function (it) {
+    return objectHas(it, STATE) ? it[STATE] : {};
+  };
+  has = function (it) {
+    return objectHas(it, STATE);
+  };
+}
+
+module.exports = {
+  set: set,
+  get: get,
+  has: has,
+  enforce: enforce,
+  getterFor: getterFor
+};
 
 
 /***/ }),
@@ -589,6 +819,23 @@ module.exports = !!Object.getOwnPropertySymbols && !fails(function () {
 
 /***/ }),
 
+/***/ "./node_modules/core-js/internals/native-weak-map.js":
+/*!***********************************************************!*\
+  !*** ./node_modules/core-js/internals/native-weak-map.js ***!
+  \***********************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+var global = __webpack_require__(/*! ../internals/global */ "./node_modules/core-js/internals/global.js");
+var nativeFunctionToString = __webpack_require__(/*! ../internals/function-to-string */ "./node_modules/core-js/internals/function-to-string.js");
+
+var WeakMap = global.WeakMap;
+
+module.exports = typeof WeakMap === 'function' && /native code/.test(nativeFunctionToString.call(WeakMap));
+
+
+/***/ }),
+
 /***/ "./node_modules/core-js/internals/object-define-property.js":
 /*!******************************************************************!*\
   !*** ./node_modules/core-js/internals/object-define-property.js ***!
@@ -615,6 +862,183 @@ exports.f = DESCRIPTORS ? nativeDefineProperty : function defineProperty(O, P, A
   if ('get' in Attributes || 'set' in Attributes) throw TypeError('Accessors not supported');
   if ('value' in Attributes) O[P] = Attributes.value;
   return O;
+};
+
+
+/***/ }),
+
+/***/ "./node_modules/core-js/internals/redefine.js":
+/*!****************************************************!*\
+  !*** ./node_modules/core-js/internals/redefine.js ***!
+  \****************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+var global = __webpack_require__(/*! ../internals/global */ "./node_modules/core-js/internals/global.js");
+var shared = __webpack_require__(/*! ../internals/shared */ "./node_modules/core-js/internals/shared.js");
+var createNonEnumerableProperty = __webpack_require__(/*! ../internals/create-non-enumerable-property */ "./node_modules/core-js/internals/create-non-enumerable-property.js");
+var has = __webpack_require__(/*! ../internals/has */ "./node_modules/core-js/internals/has.js");
+var setGlobal = __webpack_require__(/*! ../internals/set-global */ "./node_modules/core-js/internals/set-global.js");
+var nativeFunctionToString = __webpack_require__(/*! ../internals/function-to-string */ "./node_modules/core-js/internals/function-to-string.js");
+var InternalStateModule = __webpack_require__(/*! ../internals/internal-state */ "./node_modules/core-js/internals/internal-state.js");
+
+var getInternalState = InternalStateModule.get;
+var enforceInternalState = InternalStateModule.enforce;
+var TEMPLATE = String(nativeFunctionToString).split('toString');
+
+shared('inspectSource', function (it) {
+  return nativeFunctionToString.call(it);
+});
+
+(module.exports = function (O, key, value, options) {
+  var unsafe = options ? !!options.unsafe : false;
+  var simple = options ? !!options.enumerable : false;
+  var noTargetGet = options ? !!options.noTargetGet : false;
+  if (typeof value == 'function') {
+    if (typeof key == 'string' && !has(value, 'name')) createNonEnumerableProperty(value, 'name', key);
+    enforceInternalState(value).source = TEMPLATE.join(typeof key == 'string' ? key : '');
+  }
+  if (O === global) {
+    if (simple) O[key] = value;
+    else setGlobal(key, value);
+    return;
+  } else if (!unsafe) {
+    delete O[key];
+  } else if (!noTargetGet && O[key]) {
+    simple = true;
+  }
+  if (simple) O[key] = value;
+  else createNonEnumerableProperty(O, key, value);
+// add fake Function#toString for correct work wrapped methods / constructors with methods like LoDash isNative
+})(Function.prototype, 'toString', function toString() {
+  return typeof this == 'function' && getInternalState(this).source || nativeFunctionToString.call(this);
+});
+
+
+/***/ }),
+
+/***/ "./node_modules/core-js/internals/regexp-exec-abstract.js":
+/*!****************************************************************!*\
+  !*** ./node_modules/core-js/internals/regexp-exec-abstract.js ***!
+  \****************************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+var classof = __webpack_require__(/*! ./classof-raw */ "./node_modules/core-js/internals/classof-raw.js");
+var regexpExec = __webpack_require__(/*! ./regexp-exec */ "./node_modules/core-js/internals/regexp-exec.js");
+
+// `RegExpExec` abstract operation
+// https://tc39.github.io/ecma262/#sec-regexpexec
+module.exports = function (R, S) {
+  var exec = R.exec;
+  if (typeof exec === 'function') {
+    var result = exec.call(R, S);
+    if (typeof result !== 'object') {
+      throw TypeError('RegExp exec method returned something other than an Object or null');
+    }
+    return result;
+  }
+
+  if (classof(R) !== 'RegExp') {
+    throw TypeError('RegExp#exec called on incompatible receiver');
+  }
+
+  return regexpExec.call(R, S);
+};
+
+
+
+/***/ }),
+
+/***/ "./node_modules/core-js/internals/regexp-exec.js":
+/*!*******************************************************!*\
+  !*** ./node_modules/core-js/internals/regexp-exec.js ***!
+  \*******************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+var regexpFlags = __webpack_require__(/*! ./regexp-flags */ "./node_modules/core-js/internals/regexp-flags.js");
+
+var nativeExec = RegExp.prototype.exec;
+// This always refers to the native implementation, because the
+// String#replace polyfill uses ./fix-regexp-well-known-symbol-logic.js,
+// which loads this file before patching the method.
+var nativeReplace = String.prototype.replace;
+
+var patchedExec = nativeExec;
+
+var UPDATES_LAST_INDEX_WRONG = (function () {
+  var re1 = /a/;
+  var re2 = /b*/g;
+  nativeExec.call(re1, 'a');
+  nativeExec.call(re2, 'a');
+  return re1.lastIndex !== 0 || re2.lastIndex !== 0;
+})();
+
+// nonparticipating capturing group, copied from es5-shim's String#split patch.
+var NPCG_INCLUDED = /()??/.exec('')[1] !== undefined;
+
+var PATCH = UPDATES_LAST_INDEX_WRONG || NPCG_INCLUDED;
+
+if (PATCH) {
+  patchedExec = function exec(str) {
+    var re = this;
+    var lastIndex, reCopy, match, i;
+
+    if (NPCG_INCLUDED) {
+      reCopy = new RegExp('^' + re.source + '$(?!\\s)', regexpFlags.call(re));
+    }
+    if (UPDATES_LAST_INDEX_WRONG) lastIndex = re.lastIndex;
+
+    match = nativeExec.call(re, str);
+
+    if (UPDATES_LAST_INDEX_WRONG && match) {
+      re.lastIndex = re.global ? match.index + match[0].length : lastIndex;
+    }
+    if (NPCG_INCLUDED && match && match.length > 1) {
+      // Fix browsers whose `exec` methods don't consistently return `undefined`
+      // for NPCG, like IE8. NOTE: This doesn' work for /(.?)?/
+      nativeReplace.call(match[0], reCopy, function () {
+        for (i = 1; i < arguments.length - 2; i++) {
+          if (arguments[i] === undefined) match[i] = undefined;
+        }
+      });
+    }
+
+    return match;
+  };
+}
+
+module.exports = patchedExec;
+
+
+/***/ }),
+
+/***/ "./node_modules/core-js/internals/regexp-flags.js":
+/*!********************************************************!*\
+  !*** ./node_modules/core-js/internals/regexp-flags.js ***!
+  \********************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+var anObject = __webpack_require__(/*! ../internals/an-object */ "./node_modules/core-js/internals/an-object.js");
+
+// `RegExp.prototype.flags` getter implementation
+// https://tc39.github.io/ecma262/#sec-get-regexp.prototype.flags
+module.exports = function () {
+  var that = anObject(this);
+  var result = '';
+  if (that.global) result += 'g';
+  if (that.ignoreCase) result += 'i';
+  if (that.multiline) result += 'm';
+  if (that.dotAll) result += 's';
+  if (that.unicode) result += 'u';
+  if (that.sticky) result += 'y';
+  return result;
 };
 
 
@@ -653,6 +1077,25 @@ module.exports = function (key, value) {
   } catch (error) {
     global[key] = value;
   } return value;
+};
+
+
+/***/ }),
+
+/***/ "./node_modules/core-js/internals/shared-key.js":
+/*!******************************************************!*\
+  !*** ./node_modules/core-js/internals/shared-key.js ***!
+  \******************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+var shared = __webpack_require__(/*! ../internals/shared */ "./node_modules/core-js/internals/shared.js");
+var uid = __webpack_require__(/*! ../internals/uid */ "./node_modules/core-js/internals/uid.js");
+
+var keys = shared('keys');
+
+module.exports = function (key) {
+  return keys[key] || (keys[key] = uid(key));
 };
 
 
@@ -714,6 +1157,44 @@ module.exports = function (METHOD_NAME, argument) {
     // eslint-disable-next-line no-useless-call,no-throw-literal
     method.call(null, argument || function () { throw 1; }, 1);
   });
+};
+
+
+/***/ }),
+
+/***/ "./node_modules/core-js/internals/string-multibyte.js":
+/*!************************************************************!*\
+  !*** ./node_modules/core-js/internals/string-multibyte.js ***!
+  \************************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+var toInteger = __webpack_require__(/*! ../internals/to-integer */ "./node_modules/core-js/internals/to-integer.js");
+var requireObjectCoercible = __webpack_require__(/*! ../internals/require-object-coercible */ "./node_modules/core-js/internals/require-object-coercible.js");
+
+// `String.prototype.{ codePointAt, at }` methods implementation
+var createMethod = function (CONVERT_TO_STRING) {
+  return function ($this, pos) {
+    var S = String(requireObjectCoercible($this));
+    var position = toInteger(pos);
+    var size = S.length;
+    var first, second;
+    if (position < 0 || position >= size) return CONVERT_TO_STRING ? '' : undefined;
+    first = S.charCodeAt(position);
+    return first < 0xD800 || first > 0xDBFF || position + 1 === size
+      || (second = S.charCodeAt(position + 1)) < 0xDC00 || second > 0xDFFF
+        ? CONVERT_TO_STRING ? S.charAt(position) : first
+        : CONVERT_TO_STRING ? S.slice(position, position + 2) : (first - 0xD800 << 10) + (second - 0xDC00) + 0x10000;
+  };
+};
+
+module.exports = {
+  // `String.prototype.codePointAt` method
+  // https://tc39.github.io/ecma262/#sec-string.prototype.codepointat
+  codeAt: createMethod(false),
+  // `String.prototype.at` method
+  // https://github.com/mathiasbynens/String.prototype.at
+  charAt: createMethod(true)
 };
 
 
@@ -860,6 +1341,144 @@ module.exports = function (name) {
     else WellKnownSymbolsStore[name] = createWellKnownSymbol('Symbol.' + name);
   } return WellKnownSymbolsStore[name];
 };
+
+
+/***/ }),
+
+/***/ "./node_modules/core-js/modules/es.string.replace.js":
+/*!***********************************************************!*\
+  !*** ./node_modules/core-js/modules/es.string.replace.js ***!
+  \***********************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+var fixRegExpWellKnownSymbolLogic = __webpack_require__(/*! ../internals/fix-regexp-well-known-symbol-logic */ "./node_modules/core-js/internals/fix-regexp-well-known-symbol-logic.js");
+var anObject = __webpack_require__(/*! ../internals/an-object */ "./node_modules/core-js/internals/an-object.js");
+var toObject = __webpack_require__(/*! ../internals/to-object */ "./node_modules/core-js/internals/to-object.js");
+var toLength = __webpack_require__(/*! ../internals/to-length */ "./node_modules/core-js/internals/to-length.js");
+var toInteger = __webpack_require__(/*! ../internals/to-integer */ "./node_modules/core-js/internals/to-integer.js");
+var requireObjectCoercible = __webpack_require__(/*! ../internals/require-object-coercible */ "./node_modules/core-js/internals/require-object-coercible.js");
+var advanceStringIndex = __webpack_require__(/*! ../internals/advance-string-index */ "./node_modules/core-js/internals/advance-string-index.js");
+var regExpExec = __webpack_require__(/*! ../internals/regexp-exec-abstract */ "./node_modules/core-js/internals/regexp-exec-abstract.js");
+
+var max = Math.max;
+var min = Math.min;
+var floor = Math.floor;
+var SUBSTITUTION_SYMBOLS = /\$([$&'`]|\d\d?|<[^>]*>)/g;
+var SUBSTITUTION_SYMBOLS_NO_NAMED = /\$([$&'`]|\d\d?)/g;
+
+var maybeToString = function (it) {
+  return it === undefined ? it : String(it);
+};
+
+// @@replace logic
+fixRegExpWellKnownSymbolLogic('replace', 2, function (REPLACE, nativeReplace, maybeCallNative) {
+  return [
+    // `String.prototype.replace` method
+    // https://tc39.github.io/ecma262/#sec-string.prototype.replace
+    function replace(searchValue, replaceValue) {
+      var O = requireObjectCoercible(this);
+      var replacer = searchValue == undefined ? undefined : searchValue[REPLACE];
+      return replacer !== undefined
+        ? replacer.call(searchValue, O, replaceValue)
+        : nativeReplace.call(String(O), searchValue, replaceValue);
+    },
+    // `RegExp.prototype[@@replace]` method
+    // https://tc39.github.io/ecma262/#sec-regexp.prototype-@@replace
+    function (regexp, replaceValue) {
+      var res = maybeCallNative(nativeReplace, regexp, this, replaceValue);
+      if (res.done) return res.value;
+
+      var rx = anObject(regexp);
+      var S = String(this);
+
+      var functionalReplace = typeof replaceValue === 'function';
+      if (!functionalReplace) replaceValue = String(replaceValue);
+
+      var global = rx.global;
+      if (global) {
+        var fullUnicode = rx.unicode;
+        rx.lastIndex = 0;
+      }
+      var results = [];
+      while (true) {
+        var result = regExpExec(rx, S);
+        if (result === null) break;
+
+        results.push(result);
+        if (!global) break;
+
+        var matchStr = String(result[0]);
+        if (matchStr === '') rx.lastIndex = advanceStringIndex(S, toLength(rx.lastIndex), fullUnicode);
+      }
+
+      var accumulatedResult = '';
+      var nextSourcePosition = 0;
+      for (var i = 0; i < results.length; i++) {
+        result = results[i];
+
+        var matched = String(result[0]);
+        var position = max(min(toInteger(result.index), S.length), 0);
+        var captures = [];
+        // NOTE: This is equivalent to
+        //   captures = result.slice(1).map(maybeToString)
+        // but for some reason `nativeSlice.call(result, 1, result.length)` (called in
+        // the slice polyfill when slicing native arrays) "doesn't work" in safari 9 and
+        // causes a crash (https://pastebin.com/N21QzeQA) when trying to debug it.
+        for (var j = 1; j < result.length; j++) captures.push(maybeToString(result[j]));
+        var namedCaptures = result.groups;
+        if (functionalReplace) {
+          var replacerArgs = [matched].concat(captures, position, S);
+          if (namedCaptures !== undefined) replacerArgs.push(namedCaptures);
+          var replacement = String(replaceValue.apply(undefined, replacerArgs));
+        } else {
+          replacement = getSubstitution(matched, S, position, captures, namedCaptures, replaceValue);
+        }
+        if (position >= nextSourcePosition) {
+          accumulatedResult += S.slice(nextSourcePosition, position) + replacement;
+          nextSourcePosition = position + matched.length;
+        }
+      }
+      return accumulatedResult + S.slice(nextSourcePosition);
+    }
+  ];
+
+  // https://tc39.github.io/ecma262/#sec-getsubstitution
+  function getSubstitution(matched, str, position, captures, namedCaptures, replacement) {
+    var tailPos = position + matched.length;
+    var m = captures.length;
+    var symbols = SUBSTITUTION_SYMBOLS_NO_NAMED;
+    if (namedCaptures !== undefined) {
+      namedCaptures = toObject(namedCaptures);
+      symbols = SUBSTITUTION_SYMBOLS;
+    }
+    return nativeReplace.call(replacement, symbols, function (match, ch) {
+      var capture;
+      switch (ch.charAt(0)) {
+        case '$': return '$';
+        case '&': return matched;
+        case '`': return str.slice(0, position);
+        case "'": return str.slice(tailPos);
+        case '<':
+          capture = namedCaptures[ch.slice(1, -1)];
+          break;
+        default: // \d\d?
+          var n = +ch;
+          if (n === 0) return match;
+          if (n > m) {
+            var f = floor(n / 10);
+            if (f === 0) return match;
+            if (f <= m) return captures[f - 1] === undefined ? ch.charAt(1) : captures[f - 1] + ch.charAt(1);
+            return match;
+          }
+          capture = captures[n - 1];
+      }
+      return capture === undefined ? '' : capture;
+    });
+  }
+});
 
 
 /***/ }),
@@ -14835,6 +15454,545 @@ module.exports = g;
 
 /***/ }),
 
+/***/ "./node_modules/wow.js/dist/wow.js":
+/*!*****************************************!*\
+  !*** ./node_modules/wow.js/dist/wow.js ***!
+  \*****************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_DEFINE_RESULT__;(function (global, factory) {
+  if (true) {
+    !(__WEBPACK_AMD_DEFINE_ARRAY__ = [module, exports], __WEBPACK_AMD_DEFINE_FACTORY__ = (factory),
+				__WEBPACK_AMD_DEFINE_RESULT__ = (typeof __WEBPACK_AMD_DEFINE_FACTORY__ === 'function' ?
+				(__WEBPACK_AMD_DEFINE_FACTORY__.apply(exports, __WEBPACK_AMD_DEFINE_ARRAY__)) : __WEBPACK_AMD_DEFINE_FACTORY__),
+				__WEBPACK_AMD_DEFINE_RESULT__ !== undefined && (module.exports = __WEBPACK_AMD_DEFINE_RESULT__));
+  } else { var mod; }
+})(this, function (module, exports) {
+  'use strict';
+
+  Object.defineProperty(exports, "__esModule", {
+    value: true
+  });
+
+  var _class, _temp;
+
+  function _classCallCheck(instance, Constructor) {
+    if (!(instance instanceof Constructor)) {
+      throw new TypeError("Cannot call a class as a function");
+    }
+  }
+
+  var _createClass = function () {
+    function defineProperties(target, props) {
+      for (var i = 0; i < props.length; i++) {
+        var descriptor = props[i];
+        descriptor.enumerable = descriptor.enumerable || false;
+        descriptor.configurable = true;
+        if ("value" in descriptor) descriptor.writable = true;
+        Object.defineProperty(target, descriptor.key, descriptor);
+      }
+    }
+
+    return function (Constructor, protoProps, staticProps) {
+      if (protoProps) defineProperties(Constructor.prototype, protoProps);
+      if (staticProps) defineProperties(Constructor, staticProps);
+      return Constructor;
+    };
+  }();
+
+  function isIn(needle, haystack) {
+    return haystack.indexOf(needle) >= 0;
+  }
+
+  function extend(custom, defaults) {
+    for (var key in defaults) {
+      if (custom[key] == null) {
+        var value = defaults[key];
+        custom[key] = value;
+      }
+    }
+    return custom;
+  }
+
+  function isMobile(agent) {
+    return (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(agent)
+    );
+  }
+
+  function createEvent(event) {
+    var bubble = arguments.length <= 1 || arguments[1] === undefined ? false : arguments[1];
+    var cancel = arguments.length <= 2 || arguments[2] === undefined ? false : arguments[2];
+    var detail = arguments.length <= 3 || arguments[3] === undefined ? null : arguments[3];
+
+    var customEvent = void 0;
+    if (document.createEvent != null) {
+      // W3C DOM
+      customEvent = document.createEvent('CustomEvent');
+      customEvent.initCustomEvent(event, bubble, cancel, detail);
+    } else if (document.createEventObject != null) {
+      // IE DOM < 9
+      customEvent = document.createEventObject();
+      customEvent.eventType = event;
+    } else {
+      customEvent.eventName = event;
+    }
+
+    return customEvent;
+  }
+
+  function emitEvent(elem, event) {
+    if (elem.dispatchEvent != null) {
+      // W3C DOM
+      elem.dispatchEvent(event);
+    } else if (event in (elem != null)) {
+      elem[event]();
+    } else if ('on' + event in (elem != null)) {
+      elem['on' + event]();
+    }
+  }
+
+  function addEvent(elem, event, fn) {
+    if (elem.addEventListener != null) {
+      // W3C DOM
+      elem.addEventListener(event, fn, false);
+    } else if (elem.attachEvent != null) {
+      // IE DOM
+      elem.attachEvent('on' + event, fn);
+    } else {
+      // fallback
+      elem[event] = fn;
+    }
+  }
+
+  function removeEvent(elem, event, fn) {
+    if (elem.removeEventListener != null) {
+      // W3C DOM
+      elem.removeEventListener(event, fn, false);
+    } else if (elem.detachEvent != null) {
+      // IE DOM
+      elem.detachEvent('on' + event, fn);
+    } else {
+      // fallback
+      delete elem[event];
+    }
+  }
+
+  function getInnerHeight() {
+    if ('innerHeight' in window) {
+      return window.innerHeight;
+    }
+
+    return document.documentElement.clientHeight;
+  }
+
+  // Minimalistic WeakMap shim, just in case.
+  var WeakMap = window.WeakMap || window.MozWeakMap || function () {
+    function WeakMap() {
+      _classCallCheck(this, WeakMap);
+
+      this.keys = [];
+      this.values = [];
+    }
+
+    _createClass(WeakMap, [{
+      key: 'get',
+      value: function get(key) {
+        for (var i = 0; i < this.keys.length; i++) {
+          var item = this.keys[i];
+          if (item === key) {
+            return this.values[i];
+          }
+        }
+        return undefined;
+      }
+    }, {
+      key: 'set',
+      value: function set(key, value) {
+        for (var i = 0; i < this.keys.length; i++) {
+          var item = this.keys[i];
+          if (item === key) {
+            this.values[i] = value;
+            return this;
+          }
+        }
+        this.keys.push(key);
+        this.values.push(value);
+        return this;
+      }
+    }]);
+
+    return WeakMap;
+  }();
+
+  // Dummy MutationObserver, to avoid raising exceptions.
+  var MutationObserver = window.MutationObserver || window.WebkitMutationObserver || window.MozMutationObserver || (_temp = _class = function () {
+    function MutationObserver() {
+      _classCallCheck(this, MutationObserver);
+
+      if (typeof console !== 'undefined' && console !== null) {
+        console.warn('MutationObserver is not supported by your browser.');
+        console.warn('WOW.js cannot detect dom mutations, please call .sync() after loading new content.');
+      }
+    }
+
+    _createClass(MutationObserver, [{
+      key: 'observe',
+      value: function observe() {}
+    }]);
+
+    return MutationObserver;
+  }(), _class.notSupported = true, _temp);
+
+  // getComputedStyle shim, from http://stackoverflow.com/a/21797294
+  var getComputedStyle = window.getComputedStyle || function getComputedStyle(el) {
+    var getComputedStyleRX = /(\-([a-z]){1})/g;
+    return {
+      getPropertyValue: function getPropertyValue(prop) {
+        if (prop === 'float') {
+          prop = 'styleFloat';
+        }
+        if (getComputedStyleRX.test(prop)) {
+          prop.replace(getComputedStyleRX, function (_, _char) {
+            return _char.toUpperCase();
+          });
+        }
+        var currentStyle = el.currentStyle;
+
+        return (currentStyle != null ? currentStyle[prop] : void 0) || null;
+      }
+    };
+  };
+
+  var WOW = function () {
+    function WOW() {
+      var options = arguments.length <= 0 || arguments[0] === undefined ? {} : arguments[0];
+
+      _classCallCheck(this, WOW);
+
+      this.defaults = {
+        boxClass: 'wow',
+        animateClass: 'animated',
+        offset: 0,
+        mobile: true,
+        live: true,
+        callback: null,
+        scrollContainer: null
+      };
+
+      this.animate = function animateFactory() {
+        if ('requestAnimationFrame' in window) {
+          return function (callback) {
+            return window.requestAnimationFrame(callback);
+          };
+        }
+        return function (callback) {
+          return callback();
+        };
+      }();
+
+      this.vendors = ['moz', 'webkit'];
+
+      this.start = this.start.bind(this);
+      this.resetAnimation = this.resetAnimation.bind(this);
+      this.scrollHandler = this.scrollHandler.bind(this);
+      this.scrollCallback = this.scrollCallback.bind(this);
+      this.scrolled = true;
+      this.config = extend(options, this.defaults);
+      if (options.scrollContainer != null) {
+        this.config.scrollContainer = document.querySelector(options.scrollContainer);
+      }
+      // Map of elements to animation names:
+      this.animationNameCache = new WeakMap();
+      this.wowEvent = createEvent(this.config.boxClass);
+    }
+
+    _createClass(WOW, [{
+      key: 'init',
+      value: function init() {
+        this.element = window.document.documentElement;
+        if (isIn(document.readyState, ['interactive', 'complete'])) {
+          this.start();
+        } else {
+          addEvent(document, 'DOMContentLoaded', this.start);
+        }
+        this.finished = [];
+      }
+    }, {
+      key: 'start',
+      value: function start() {
+        var _this = this;
+
+        this.stopped = false;
+        this.boxes = [].slice.call(this.element.querySelectorAll('.' + this.config.boxClass));
+        this.all = this.boxes.slice(0);
+        if (this.boxes.length) {
+          if (this.disabled()) {
+            this.resetStyle();
+          } else {
+            for (var i = 0; i < this.boxes.length; i++) {
+              var box = this.boxes[i];
+              this.applyStyle(box, true);
+            }
+          }
+        }
+        if (!this.disabled()) {
+          addEvent(this.config.scrollContainer || window, 'scroll', this.scrollHandler);
+          addEvent(window, 'resize', this.scrollHandler);
+          this.interval = setInterval(this.scrollCallback, 50);
+        }
+        if (this.config.live) {
+          var mut = new MutationObserver(function (records) {
+            for (var j = 0; j < records.length; j++) {
+              var record = records[j];
+              for (var k = 0; k < record.addedNodes.length; k++) {
+                var node = record.addedNodes[k];
+                _this.doSync(node);
+              }
+            }
+            return undefined;
+          });
+          mut.observe(document.body, {
+            childList: true,
+            subtree: true
+          });
+        }
+      }
+    }, {
+      key: 'stop',
+      value: function stop() {
+        this.stopped = true;
+        removeEvent(this.config.scrollContainer || window, 'scroll', this.scrollHandler);
+        removeEvent(window, 'resize', this.scrollHandler);
+        if (this.interval != null) {
+          clearInterval(this.interval);
+        }
+      }
+    }, {
+      key: 'sync',
+      value: function sync() {
+        if (MutationObserver.notSupported) {
+          this.doSync(this.element);
+        }
+      }
+    }, {
+      key: 'doSync',
+      value: function doSync(element) {
+        if (typeof element === 'undefined' || element === null) {
+          element = this.element;
+        }
+        if (element.nodeType !== 1) {
+          return;
+        }
+        element = element.parentNode || element;
+        var iterable = element.querySelectorAll('.' + this.config.boxClass);
+        for (var i = 0; i < iterable.length; i++) {
+          var box = iterable[i];
+          if (!isIn(box, this.all)) {
+            this.boxes.push(box);
+            this.all.push(box);
+            if (this.stopped || this.disabled()) {
+              this.resetStyle();
+            } else {
+              this.applyStyle(box, true);
+            }
+            this.scrolled = true;
+          }
+        }
+      }
+    }, {
+      key: 'show',
+      value: function show(box) {
+        this.applyStyle(box);
+        box.className = box.className + ' ' + this.config.animateClass;
+        if (this.config.callback != null) {
+          this.config.callback(box);
+        }
+        emitEvent(box, this.wowEvent);
+
+        addEvent(box, 'animationend', this.resetAnimation);
+        addEvent(box, 'oanimationend', this.resetAnimation);
+        addEvent(box, 'webkitAnimationEnd', this.resetAnimation);
+        addEvent(box, 'MSAnimationEnd', this.resetAnimation);
+
+        return box;
+      }
+    }, {
+      key: 'applyStyle',
+      value: function applyStyle(box, hidden) {
+        var _this2 = this;
+
+        var duration = box.getAttribute('data-wow-duration');
+        var delay = box.getAttribute('data-wow-delay');
+        var iteration = box.getAttribute('data-wow-iteration');
+
+        return this.animate(function () {
+          return _this2.customStyle(box, hidden, duration, delay, iteration);
+        });
+      }
+    }, {
+      key: 'resetStyle',
+      value: function resetStyle() {
+        for (var i = 0; i < this.boxes.length; i++) {
+          var box = this.boxes[i];
+          box.style.visibility = 'visible';
+        }
+        return undefined;
+      }
+    }, {
+      key: 'resetAnimation',
+      value: function resetAnimation(event) {
+        if (event.type.toLowerCase().indexOf('animationend') >= 0) {
+          var target = event.target || event.srcElement;
+          target.className = target.className.replace(this.config.animateClass, '').trim();
+        }
+      }
+    }, {
+      key: 'customStyle',
+      value: function customStyle(box, hidden, duration, delay, iteration) {
+        if (hidden) {
+          this.cacheAnimationName(box);
+        }
+        box.style.visibility = hidden ? 'hidden' : 'visible';
+
+        if (duration) {
+          this.vendorSet(box.style, { animationDuration: duration });
+        }
+        if (delay) {
+          this.vendorSet(box.style, { animationDelay: delay });
+        }
+        if (iteration) {
+          this.vendorSet(box.style, { animationIterationCount: iteration });
+        }
+        this.vendorSet(box.style, { animationName: hidden ? 'none' : this.cachedAnimationName(box) });
+
+        return box;
+      }
+    }, {
+      key: 'vendorSet',
+      value: function vendorSet(elem, properties) {
+        for (var name in properties) {
+          if (properties.hasOwnProperty(name)) {
+            var value = properties[name];
+            elem['' + name] = value;
+            for (var i = 0; i < this.vendors.length; i++) {
+              var vendor = this.vendors[i];
+              elem['' + vendor + name.charAt(0).toUpperCase() + name.substr(1)] = value;
+            }
+          }
+        }
+      }
+    }, {
+      key: 'vendorCSS',
+      value: function vendorCSS(elem, property) {
+        var style = getComputedStyle(elem);
+        var result = style.getPropertyCSSValue(property);
+        for (var i = 0; i < this.vendors.length; i++) {
+          var vendor = this.vendors[i];
+          result = result || style.getPropertyCSSValue('-' + vendor + '-' + property);
+        }
+        return result;
+      }
+    }, {
+      key: 'animationName',
+      value: function animationName(box) {
+        var aName = void 0;
+        try {
+          aName = this.vendorCSS(box, 'animation-name').cssText;
+        } catch (error) {
+          // Opera, fall back to plain property value
+          aName = getComputedStyle(box).getPropertyValue('animation-name');
+        }
+
+        if (aName === 'none') {
+          return ''; // SVG/Firefox, unable to get animation name?
+        }
+
+        return aName;
+      }
+    }, {
+      key: 'cacheAnimationName',
+      value: function cacheAnimationName(box) {
+        // https://bugzilla.mozilla.org/show_bug.cgi?id=921834
+        // box.dataset is not supported for SVG elements in Firefox
+        return this.animationNameCache.set(box, this.animationName(box));
+      }
+    }, {
+      key: 'cachedAnimationName',
+      value: function cachedAnimationName(box) {
+        return this.animationNameCache.get(box);
+      }
+    }, {
+      key: 'scrollHandler',
+      value: function scrollHandler() {
+        this.scrolled = true;
+      }
+    }, {
+      key: 'scrollCallback',
+      value: function scrollCallback() {
+        if (this.scrolled) {
+          this.scrolled = false;
+          var results = [];
+          for (var i = 0; i < this.boxes.length; i++) {
+            var box = this.boxes[i];
+            if (box) {
+              if (this.isVisible(box)) {
+                this.show(box);
+                continue;
+              }
+              results.push(box);
+            }
+          }
+          this.boxes = results;
+          if (!this.boxes.length && !this.config.live) {
+            this.stop();
+          }
+        }
+      }
+    }, {
+      key: 'offsetTop',
+      value: function offsetTop(element) {
+        // SVG elements don't have an offsetTop in Firefox.
+        // This will use their nearest parent that has an offsetTop.
+        // Also, using ('offsetTop' of element) causes an exception in Firefox.
+        while (element.offsetTop === undefined) {
+          element = element.parentNode;
+        }
+        var top = element.offsetTop;
+        while (element.offsetParent) {
+          element = element.offsetParent;
+          top += element.offsetTop;
+        }
+        return top;
+      }
+    }, {
+      key: 'isVisible',
+      value: function isVisible(box) {
+        var offset = box.getAttribute('data-wow-offset') || this.config.offset;
+        var viewTop = this.config.scrollContainer && this.config.scrollContainer.scrollTop || window.pageYOffset;
+        var viewBottom = viewTop + Math.min(this.element.clientHeight, getInnerHeight()) - offset;
+        var top = this.offsetTop(box);
+        var bottom = top + box.clientHeight;
+
+        return top <= viewBottom && bottom >= viewTop;
+      }
+    }, {
+      key: 'disabled',
+      value: function disabled() {
+        return !this.config.mobile && isMobile(navigator.userAgent);
+      }
+    }]);
+
+    return WOW;
+  }();
+
+  exports.default = WOW;
+  module.exports = exports['default'];
+});
+
+
+/***/ }),
+
 /***/ "./src/js/main.js":
 /*!************************!*\
   !*** ./src/js/main.js ***!
@@ -14847,14 +16005,18 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _slider__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ./slider */ "./src/js/slider.js");
 /* harmony import */ var _modules_modals__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ./modules/modals */ "./src/js/modules/modals.js");
 /* harmony import */ var _modules_tabs__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ./modules/tabs */ "./src/js/modules/tabs.js");
+/* harmony import */ var wow_js__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! wow.js */ "./node_modules/wow.js/dist/wow.js");
+/* harmony import */ var wow_js__WEBPACK_IMPORTED_MODULE_3___default = /*#__PURE__*/__webpack_require__.n(wow_js__WEBPACK_IMPORTED_MODULE_3__);
 
 
 
+
+new wow_js__WEBPACK_IMPORTED_MODULE_3___default.a().init();
 window.addEventListener('DOMContentLoaded', function () {
   Object(_modules_modals__WEBPACK_IMPORTED_MODULE_1__["default"])('.popup_engineer_btn', '.popup_engineer', '.popup_engineer .popup_close');
   Object(_modules_modals__WEBPACK_IMPORTED_MODULE_1__["default"])('.phone_link', '.popup', '.popup .popup_close');
-  Object(_modules_tabs__WEBPACK_IMPORTED_MODULE_2__["default"])('.glazing_slider', '.slick-slide', '.glazing_content', '.after_click');
-  Object(_modules_tabs__WEBPACK_IMPORTED_MODULE_2__["default"])('.decoration_slider', '.decoration_item', '.decoration_content', '.after_click');
+  Object(_modules_tabs__WEBPACK_IMPORTED_MODULE_2__["default"])('.glazing_slider', '.glazing_block', '.glazing_content', 'active');
+  Object(_modules_tabs__WEBPACK_IMPORTED_MODULE_2__["default"])('.decoration_slider', '.no_click', '.decoration_content > div > div', 'after_click');
 });
 
 /***/ }),
@@ -14884,17 +16046,28 @@ function modals(triggerSelector, modalSelector, closeSelector) {
         }
 
         modalEngineer.style.display = 'block';
+        modalEngineer.classList.add('animate__fadeIn', 'wow', 'animate__animated');
         document.body.style.overflow = 'hidden';
       });
     });
     modalEngineerClose.addEventListener('click', function () {
-      modalEngineer.style.display = 'none';
-      document.body.style.overflow = '';
+      modalEngineer.classList.remove('animate__fadeIn', 'wow', 'animate__animated');
+      modalEngineer.classList.add('animate__fadeOut', 'wow', 'animate__animated');
+      setTimeout(function () {
+        modalEngineer.style.display = 'none';
+        document.body.style.overflow = '';
+        modalEngineer.classList.remove('animate__fadeOut', 'wow', 'animate__animated');
+      }, 500);
     });
     modalEngineer.addEventListener('click', function (e) {
       if (e.target === modalEngineer) {
-        modalEngineer.style.display = 'none';
-        document.body.style.overflow = '';
+        modalEngineer.classList.remove('animate__fadeIn', 'wow', 'animate__animated');
+        modalEngineer.classList.add('animate__fadeOut', 'wow', 'animate__animated');
+        setTimeout(function () {
+          modalEngineer.style.display = 'none';
+          document.body.style.overflow = '';
+          modalEngineer.classList.remove('animate__fadeOut', 'wow', 'animate__animated');
+        }, 500);
       }
     });
   }
@@ -14922,14 +16095,18 @@ function modals(triggerSelector, modalSelector, closeSelector) {
 
 "use strict";
 __webpack_require__.r(__webpack_exports__);
-/* harmony import */ var core_js_modules_web_dom_collections_for_each__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! core-js/modules/web.dom-collections.for-each */ "./node_modules/core-js/modules/web.dom-collections.for-each.js");
-/* harmony import */ var core_js_modules_web_dom_collections_for_each__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(core_js_modules_web_dom_collections_for_each__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var core_js_modules_es_string_replace__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! core-js/modules/es.string.replace */ "./node_modules/core-js/modules/es.string.replace.js");
+/* harmony import */ var core_js_modules_es_string_replace__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(core_js_modules_es_string_replace__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var core_js_modules_web_dom_collections_for_each__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! core-js/modules/web.dom-collections.for-each */ "./node_modules/core-js/modules/web.dom-collections.for-each.js");
+/* harmony import */ var core_js_modules_web_dom_collections_for_each__WEBPACK_IMPORTED_MODULE_1___default = /*#__PURE__*/__webpack_require__.n(core_js_modules_web_dom_collections_for_each__WEBPACK_IMPORTED_MODULE_1__);
+
 
 
 function tabs(headerSelector, tabSelector, contentSelector, activeClass) {
   var header = document.querySelector(headerSelector),
       tabs = document.querySelectorAll(tabSelector),
-      content = document.querySelector(contentSelector);
+      content = document.querySelectorAll(contentSelector);
+  console.log(tabs);
 
   function hideContent() {
     content.forEach(function (content) {
@@ -14943,12 +16120,25 @@ function tabs(headerSelector, tabSelector, contentSelector, activeClass) {
   hideContent();
 
   function showContent() {
-    var i = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : 1;
+    var i = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : 0;
     content[i].style.display = 'block';
+    content[i].classList.add('animate__fadeIn', 'wow', 'animate__animated');
     tabs[i].classList.add(activeClass);
   }
 
   showContent();
+  header.addEventListener('click', function (e) {
+    var target = e.target;
+
+    if (target && (target && target.classList.contains(tabSelector.replace(/\./, '')) || target.parentNode.classList.contains(tabSelector.replace(/\./, '')))) {
+      tabs.forEach(function (item, i) {
+        if (target == item || target.parentNode == item) {
+          hideContent();
+          showContent(i);
+        }
+      });
+    }
+  });
 }
 
 /* harmony default export */ __webpack_exports__["default"] = (tabs);
