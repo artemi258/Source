@@ -1,9 +1,7 @@
-function tabs(headerSelector, tabSelector, contentSelector, activeClass) {
+function tabs(headerSelector, tabSelector, contentSelector, activeClass, display = 'block') {
     const header = document.querySelector(headerSelector),
           tabs = document.querySelectorAll(tabSelector),
           content = document.querySelectorAll(contentSelector);
-
-          console.log(tabs);
 
           function hideContent() {
               content.forEach(content => {
@@ -18,7 +16,7 @@ function tabs(headerSelector, tabSelector, contentSelector, activeClass) {
           hideContent();
 
           function showContent(i = 0) {
-              content[i].style.display = 'block';
+              content[i].style.display = display;
               content[i].classList.add('animate__fadeIn', 'wow', 'animate__animated');
               tabs[i].classList.add(activeClass);
           }
