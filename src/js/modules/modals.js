@@ -6,14 +6,21 @@ function modals(triggerSelector, modalSelector, closeSelector, closeClickOverlay
                   modalEngineerClose = document.querySelector(close),
                   windows = document.querySelectorAll('[data-modal]');
 
-
-            
-
             callEngineerBtn.forEach(btn => {
+               
+
                 btn.addEventListener('click', (e) => {
                     if (e.target) {
                         e.preventDefault();
                     }
+                    if (document.querySelector('#width').value && document.querySelector('#height').value) {   //если ширина и высота уже введены , то кнопку делаем активной
+                        document.querySelector('.popup_calc_button').disabled = false;
+                    } else {
+                        document.querySelector('.popup_calc_button').disabled = true;               //иначе блокируем
+
+                    }
+                    
+
 
                     windows.forEach(item => {
                         item.style.display = 'none';
@@ -22,8 +29,12 @@ function modals(triggerSelector, modalSelector, closeSelector, closeClickOverlay
                     modalEngineer.style.display = 'block';
                     modalEngineer.classList.add('animate__fadeIn', 'wow', 'animate__animated');
                     document.body.style.overflow = 'hidden';
-        
+
+                    
                     });
+                    
+                    
+       
             });
 
             modalEngineerClose.addEventListener('click', () => {
