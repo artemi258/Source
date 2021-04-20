@@ -18356,7 +18356,12 @@ __webpack_require__.r(__webpack_exports__);
 
 new wow_js__WEBPACK_IMPORTED_MODULE_3___default.a().init();
 window.addEventListener('DOMContentLoaded', function () {
-  var modalState = {};
+  var modalState = {
+    form: 0,
+    //стандартное значение
+    type: "tree"
+  };
+  Object(_modules_forms__WEBPACK_IMPORTED_MODULE_4__["default"])(modalState);
   Object(_modules_changeModalStat__WEBPACK_IMPORTED_MODULE_5__["default"])(modalState);
   Object(_modules_modals__WEBPACK_IMPORTED_MODULE_1__["default"])('.popup_engineer_btn', '.popup_engineer', '.popup_engineer .popup_close');
   Object(_modules_modals__WEBPACK_IMPORTED_MODULE_1__["default"])('.phone_link', '.popup', '.popup .popup_close');
@@ -18366,7 +18371,6 @@ window.addEventListener('DOMContentLoaded', function () {
   Object(_modules_tabs__WEBPACK_IMPORTED_MODULE_2__["default"])('.glazing_slider', '.glazing_block', '.glazing_content', 'active');
   Object(_modules_tabs__WEBPACK_IMPORTED_MODULE_2__["default"])('.decoration_slider', '.no_click', '.decoration_content > div > div', 'after_click');
   Object(_modules_tabs__WEBPACK_IMPORTED_MODULE_2__["default"])('.balcon_icons', '.balcon_icons_img', '.big_img > img', 'do_image_more', 'inline');
-  Object(_modules_forms__WEBPACK_IMPORTED_MODULE_4__["default"])(modalState);
 });
 
 /***/ }),
@@ -18404,8 +18408,20 @@ function changeModalStat(state) {
             break;
 
           case 'INPUT':
+            if (document.querySelector('#width').value && document.querySelector('#height').value) //если в ширине и высоте есть значения, то кнопку делаем активной
+              document.querySelector('.popup_calc_button').disabled = false;
+
+            if (!i) {
+              document.querySelector('.popup_calc_profile_button').disabled = true; //если пользователь не выбрал профиль остекления (холодный или теплый) кнопку блокируем
+            }
+
             if (item.getAttribute('type') == 'checkbox') {
               i == 0 ? state[prop] = 'холодный' : state[prop] = 'теплый';
+
+              if (state[prop] == 'холодный' || state[prop] == 'теплый') {
+                document.querySelector('.popup_calc_profile_button').disabled = false; //если пользовать выбрал профиль остекления, то кнопку делаем активной
+              }
+
               elem.forEach(function (box, j) {
                 box.checked = false;
 
@@ -18564,6 +18580,16 @@ function forms(state) {
       postData('assets/server.php', formData).then(function (res) {
         console.log(res);
         statusMessage.textContent = message.success;
+        document.querySelectorAll('.checkbox').forEach(function (item) {
+          //после отправки формы убираем галочки у холодный или теплый
+          item.checked = false;
+        });
+
+        for (var _key in state) {
+          _key = null;
+        }
+
+        ;
       }).catch(function () {
         statusMessage.textContent = message.error;
       }).finally(function () {
@@ -18605,6 +18631,13 @@ function modals(triggerSelector, modalSelector, closeSelector) {
       btn.addEventListener('click', function (e) {
         if (e.target) {
           e.preventDefault();
+        }
+
+        if (document.querySelector('#width').value && document.querySelector('#height').value) {
+          //если ширина и высота уже введены , то кнопку делаем активной
+          document.querySelector('.popup_calc_button').disabled = false;
+        } else {
+          document.querySelector('.popup_calc_button').disabled = true; //иначе блокируем
         }
 
         windows.forEach(function (item) {

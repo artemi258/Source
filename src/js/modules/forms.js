@@ -64,6 +64,12 @@ import checkNumInputs from "./checkNumInputs";
                 .then(res => {
                     console.log(res);
                     statusMessage.textContent = message.success;
+                    document.querySelectorAll('.checkbox').forEach(item => {  //после отправки формы убираем галочки у холодный или теплый
+                        item.checked = false;
+                    });
+                    for (let key in state) {
+                        key = null;
+                    };
                 })
                 .catch(() => {
                     statusMessage.textContent = message.error;
