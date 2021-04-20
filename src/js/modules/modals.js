@@ -1,9 +1,11 @@
-function modals(triggerSelector, modalSelector, closeSelector) {
+function modals(triggerSelector, modalSelector, closeSelector, closeClickOverlay = true) {
     function bindModal(trigger, modal, close) {
 
         const     callEngineerBtn = document.querySelectorAll(trigger),
                   modalEngineer = document.querySelector(modal),
-                  modalEngineerClose = document.querySelector(close);
+                  modalEngineerClose = document.querySelector(close),
+                  windows = document.querySelectorAll('[data-modal]');
+
 
             
 
@@ -12,6 +14,10 @@ function modals(triggerSelector, modalSelector, closeSelector) {
                     if (e.target) {
                         e.preventDefault();
                     }
+
+                    windows.forEach(item => {
+                        item.style.display = 'none';
+                    });
         
                     modalEngineer.style.display = 'block';
                     modalEngineer.classList.add('animate__fadeIn', 'wow', 'animate__animated');
@@ -27,17 +33,23 @@ function modals(triggerSelector, modalSelector, closeSelector) {
                         modalEngineer.style.display = 'none';
                         document.body.style.overflow = '';
                         modalEngineer.classList.remove('animate__fadeOut', 'wow', 'animate__animated');
+                        windows.forEach(item => {
+                            item.style.display = 'none';
+                        });
                      }, 500); 
             });
 
             modalEngineer.addEventListener('click', (e) => {
-                      if (e.target === modalEngineer) {
+                      if (e.target === modalEngineer && closeClickOverlay) {
                             modalEngineer.classList.remove('animate__fadeIn', 'wow', 'animate__animated');
                             modalEngineer.classList.add('animate__fadeOut', 'wow', 'animate__animated');
                          setTimeout(() => {
                             modalEngineer.style.display = 'none';
                             document.body.style.overflow = '';
                             modalEngineer.classList.remove('animate__fadeOut', 'wow', 'animate__animated');
+                            windows.forEach(item => {
+                                item.style.display = 'none';
+                            });
                          }, 500);   
                             
                         }
