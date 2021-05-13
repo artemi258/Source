@@ -4,12 +4,16 @@ function modals(triggerSelector, modalSelector, closeSelector, closeClickOverlay
         const     callEngineerBtn = document.querySelectorAll(trigger),
                   modalEngineer = document.querySelector(modal),
                   modalEngineerClose = document.querySelector(close),
-                  windows = document.querySelectorAll('[data-modal]');
+                  windows = document.querySelectorAll('[data-modal]'),
+                  width = calcScroll();
+
+                 console.log(width);
 
             callEngineerBtn.forEach(btn => {
                
-
                 btn.addEventListener('click', (e) => {
+                    document.body.style.marginRight = `${width}px`;
+
                     if (e.target) {
                         e.preventDefault();
                     }
@@ -44,16 +48,18 @@ function modals(triggerSelector, modalSelector, closeSelector, closeClickOverlay
                         modalEngineer.style.display = 'none';
                         document.body.style.overflow = '';
                         modalEngineer.classList.remove('animate__fadeOut', 'wow', 'animate__animated');
+                        document.body.style.marginRight = `0px`;
                         windows.forEach(item => {
                             item.style.display = 'none';
                         });
-                     }, 500); 
+                     }, 500);
             });
 
             modalEngineer.addEventListener('click', (e) => {
                       if (e.target === modalEngineer && closeClickOverlay) {
                             modalEngineer.classList.remove('animate__fadeIn', 'wow', 'animate__animated');
                             modalEngineer.classList.add('animate__fadeOut', 'wow', 'animate__animated');
+                            document.body.style.marginRight = `0px`;
                          setTimeout(() => {
                             modalEngineer.style.display = 'none';
                             document.body.style.overflow = '';
@@ -72,6 +78,28 @@ function modals(triggerSelector, modalSelector, closeSelector, closeClickOverlay
                     document.querySelector(selector).style.display = 'block';
                     document.body.style.overflow = 'hidden';
                 }, time);
+    }
+
+    function calcScroll() {
+        let div = document.createElement('div');
+
+        div.style.width = '50px';
+        div.style.height = '50px';
+        div.style.overflowY = 'scroll';
+        div.style.visibility = 'hidden';
+
+
+
+        document.body.appendChild(div);
+
+        document.body.appendChild(div);
+
+        let scrollWidth = div.offsetWidth - div.clientWidth;
+
+        div.remove();
+
+
+        return scrollWidth;
     }
 
     bindModal(triggerSelector, modalSelector, closeSelector);

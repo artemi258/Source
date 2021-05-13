@@ -4,6 +4,8 @@ import tabs from "./modules/tabs";
 import WOW from "wow.js";
 import forms from "./modules/forms";
 import changeModalStat from "./modules/changeModalStat";
+import timer from "./modules/timer";
+import images from "./modules/images";
 
 new WOW().init();
 
@@ -27,4 +29,7 @@ window.addEventListener('DOMContentLoaded', () => {
     tabs('.glazing_slider', '.glazing_block', '.glazing_content', 'active');
     tabs('.decoration_slider', '.no_click', '.decoration_content > div > div', 'after_click');
     tabs('.balcon_icons', '.balcon_icons_img', '.big_img > img', 'do_image_more', 'inline');
+    timer();
+    images();
+
 });
