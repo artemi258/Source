@@ -68,7 +68,7 @@ import checkNumInputs from "./checkNumInputs";
                         item.checked = false;
                     });
                     for (let key in state) {
-                        key = null;
+                        delete state[key];
                     };
                 })
                 .catch(() => {
